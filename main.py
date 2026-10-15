@@ -20,7 +20,7 @@ def handle_text(message):
     try:
         bot.send_chat_action(message.chat.id, 'typing')
         response = ai_client.models.generate_content(
-            model="gemini-2.5-flash",
+            model="gemini-1.5-flash",
             contents=message.text
         )
         bot.reply_to(message, response.text)
