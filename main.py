@@ -1,47 +1,43 @@
 import os
-import telebot
 from flask import Flask, request
-from google import genai
+import telebot
+import google.generativeai as genai
 
-TG_TOKEN = os.environ.get("TG_TOKEN", "8622991408:AAG8WvGCAD5lp_FaZfwpgBl7E0jKf2SMlGU")
-GEMINI_KEY = os.environ.get("GEMINI_KEY", "AIzaSyAooFtGvodf8fjDZ9Itke_mlHabaaM7Cnw")
-RENDER_EXTERNAL_URL = os.environ.get("RENDER_EXTERNAL_URL")
+TG_TOKEN = os.environ.get('TG_TOKEN')
+GEMINI_KEY = os.environ.get('GEMINI_KEY') or os.environ.get('GEMINI_API_KEY')
 
 bot = telebot.TeleBot(TG_TOKEN)
-ai_client = genai.Client(api_key=GEMINI_KEY)
+genai.configure(api_key=GEMINI_KEY)
+model = genai.GenerativeModel('gemini-1.5-flash')
+
 app = Flask(__name__)
 
-@bot.message_handler(commands=['start', 'help'])
-def start_cmd(message):
-    bot.reply_to(message, "Привет! Я твой личный ИИ-помощник на базе Gemini. Задай мне любой вопрос :)")
-
-@bot.message_handler(func=lambda m: True)
-def handle_text(message):
-    try:
-        bot.send_chat_action(message.chat.id, 'typing')
-        response = ai_client.models.generate_content(
-            model="gemini-1.5-flash",
-            contents=message.text
-        )
-        bot.reply_to(message, response.text)
-    except Exception as e:
-        bot.reply_to(message, f"Ошибка: {e}")
+@app.route('/')
+def index():
+    webhook_url = f"https://{request.host}/{TG_TOKEN}"
+    bot.remove_webhook()
+    bot.set_webhook(url=webhook_url)
+    return "Webhook установлен!"
 
 @app.route('/' + TG_TOKEN, methods=['POST'])
 def getMessage():
     json_string = request.get_data().decode('utf-8')
     update = telebot.types.Update.de_json(json_string)
     bot.process_new_updates([update])
-    return "!", 200
+    return "OK", 200
 
-@app.route("/")
-def webhook():
-    bot.remove_webhook()
-    if RENDER_EXTERNAL_URL:
-        bot.set_webhook(url=f"{RENDER_EXTERNAL_URL}/{TG_TOKEN}")
-        return "Webhook установлен!", 200
-    return "Сервер работает!", 200
+@bot.message_handler(commands=['start'])
+def start_cmd(message):
+    bot.reply_to(message, "Привет! Я бот на базе Gemini. Напиши мне что-нибудь :)")
+
+@bot.message_handler(func=lambda m: True)
+def handle_text(message):
+    try:
+        bot.send_chat_action(message.chat.id, 'typing')
+        response = model.generate_content(message.text)
+        bot.reply_to(message, response.text)
+    except Exception as e:
+        bot.reply_to(message, f"Ошибка Gemini: {e}")
 
 if __name__ == "__main__":
-    port = int(os.environ.get('PORT', 5000))
-    app.run(host="0.0.0.0", port=port)
+    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
